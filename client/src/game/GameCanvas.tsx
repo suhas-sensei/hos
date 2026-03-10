@@ -1,5 +1,6 @@
 "use client";
 import { useRef, useEffect, useCallback, useState } from "react";
+import { useAccount } from "@starknet-react/core";
 import { createPlayer, updatePlayer, Player, getFacingTile, MapData } from "./player";
 import { renderGame, SceneData } from "./renderer";
 import { npcs, NPC, gameMap, MAP_WIDTH, MAP_HEIGHT, tileInteractions } from "./map";
@@ -61,7 +62,43 @@ export const SHOP_POWERS: ShopPower[] = [
   { name: "Quantum Chip", icon: "🔮", description: "Unlock advanced pattern detection", cost: 2000 },
 ];
 
-export let playerMoney = 3500;
+export let playerMoney = 0;
+export let totalWins = 0;
+export let clankerPurchased = false;
+
+export const CLANKER_COST = 10; // coins to buy Clanker
+
+// ── Persistence per wallet address ──
+let _walletAddr = "";
+
+function storageKey(addr: string) {
+  return `hos_progress_${addr}`;
+}
+
+export function loadProgress(addr: string) {
+  _walletAddr = addr;
+  try {
+    const raw = localStorage.getItem(storageKey(addr));
+    if (raw) {
+      const data = JSON.parse(raw);
+      playerMoney = data.playerMoney ?? 0;
+      totalWins = data.totalWins ?? 0;
+      clankerPurchased = data.clankerPurchased ?? false;
+      if (clankerPurchased) MOCK_AGENTS[0].status = "active";
+    }
+  } catch { /* ignore */ }
+}
+
+export function saveProgress() {
+  if (!_walletAddr) return;
+  try {
+    localStorage.setItem(storageKey(_walletAddr), JSON.stringify({
+      playerMoney,
+      totalWins,
+      clankerPurchased,
+    }));
+  } catch { /* ignore */ }
+}
 
 export const MOCK_AGENTS: AgentData[] = [
   {
@@ -69,8 +106,16 @@ export const MOCK_AGENTS: AgentData[] = [
     bodyColor: "#d4a030",
     hairColor: "#6a6a6a",
     skinColor: "#88ccff",
-    status: "active",
+    status: "idle",
     abilities: ["Bet Advisor", "Pattern Recognition", "Risk Analysis", "Auto-Play Mode"],
+  },
+  {
+    name: "???",
+    bodyColor: "#555555",
+    hairColor: "#333333",
+    skinColor: "#666666",
+    status: "idle",
+    abilities: ["??????", "???"],
   },
 ];
 
@@ -105,10 +150,35 @@ const CASINO_INTRO_LINES = [
   "When you're done, find the EXIT door to leave. Good luck!",
 ];
 
+const CLANKER_TUTORIAL_LINES = [
+  "Nice! You just played your first game.",
+  "Now here's the secret weapon: the Clanker Workshop.",
+  "Press B to open your Agent Dashboard — view upgrades and abilities.",
+  "Press T to chat with Clanker, your AI companion. He can advise on bets!",
+  "Tell him 'bet heads' or 'bet tails' and he'll flip the coin for you.",
+  "Upgrade Clanker with coins you earn — Neural Boost, Memory Bank, and more.",
+  "Head to the Clanker Workshop in the overworld to learn more. Good luck!",
+];
+
 // Yuki's NPC name for matching
 const YUKI_NAME = "Dealer Yuki";
 
+// ── Audio system ──
+const VILLAGE_MUSIC_SRC = "/Village  D&D_TTRPG Ambience  1 Hour - Bardify.mp3";
+const CASINO_MUSIC_SRC = "/DANGANRONPA OST 1-27 Climax Reasoning - sharaness.mp3";
+const NPC_SOUNDS = [
+  "/hi roblox sound effect - TheSoundMachine.mp3",
+  "/Num Num Num [ROBLOX] - Dane Guinto.mp3",
+];
+
 export default function GameCanvas() {
+  const { address } = useAccount();
+
+  // Load persisted progress when wallet connects
+  useEffect(() => {
+    if (address) loadProgress(address);
+  }, [address]);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playerRef = useRef<Player>(createPlayer());
   const keysRef = useRef<Set<string>>(new Set());
@@ -123,6 +193,14 @@ export default function GameCanvas() {
   const overworldPosRef = useRef<{ x: number; y: number }>({ x: 41 * TILE_SIZE, y: 34 * TILE_SIZE });
   const companionRef = useRef<Companion>(createCompanion(playerRef.current));
 
+  // Audio refs
+  const bgMusicRef = useRef<HTMLAudioElement | null>(null);
+  const currentBgTrackRef = useRef<string>("");
+  const npcSoundIndexRef = useRef<number>(0);
+
+  // Track first game completion for Clanker Workshop tutorial
+  const hasPlayedFirstGameRef = useRef<boolean>(false);
+
   // React state for game overlays (so React components render)
   const [activeGameScreen, setActiveGameScreen] = useState<"coin_toss" | "price_prediction" | null>(null);
   const [aiChatOpen, setAiChatOpen] = useState(false);
@@ -130,7 +208,42 @@ export default function GameCanvas() {
   const [aiChatInput, setAiChatInput] = useState("");
   const [aiChatLoading, setAiChatLoading] = useState(false);
   const [clankerBet, setClankerBet] = useState<{ choice: number; autoFlip: boolean } | null>(null);
+  const [vipImageVisible, setVipImageVisible] = useState(false);
+  const vipTimerRef = useRef<number | null>(null);
   const aiChatInputRef = useRef<HTMLInputElement>(null);
+
+  const playBgMusic = useCallback((src: string) => {
+    if (currentBgTrackRef.current === src) return;
+    if (bgMusicRef.current) {
+      bgMusicRef.current.pause();
+      bgMusicRef.current = null;
+    }
+    const audio = new Audio(src);
+    audio.loop = true;
+    audio.volume = 0.4;
+    audio.play().catch(() => {}); // autoplay may be blocked until first interaction
+    bgMusicRef.current = audio;
+    currentBgTrackRef.current = src;
+  }, []);
+
+  const playNpcSound = useCallback(() => {
+    const src = NPC_SOUNDS[npcSoundIndexRef.current % NPC_SOUNDS.length];
+    npcSoundIndexRef.current++;
+    const sfx = new Audio(src);
+    sfx.volume = 0.6;
+    if (src.includes("hi roblox")) {
+      sfx.currentTime = 3;
+    }
+    if (src.includes("Num Num")) {
+      sfx.currentTime = 3;
+      sfx.addEventListener("timeupdate", () => {
+        if (sfx.currentTime >= 6) {
+          sfx.pause();
+        }
+      });
+    }
+    sfx.play().catch(() => {});
+  }, []);
 
   const getActiveMap = useCallback((): { map: number[][]; width: number; height: number } => {
     if (sceneRef.current === "casino") {
@@ -152,7 +265,6 @@ export default function GameCanvas() {
 
   const switchToCasino = useCallback(() => {
     overworldPosRef.current = { x: playerRef.current.x, y: playerRef.current.y };
-    // Spawn at bottom of carpet runner, just above exit zone
     playerRef.current.x = CASINO_EXIT.x * TILE_SIZE;
     playerRef.current.y = (CASINO_EXIT.y - 2) * TILE_SIZE;
     playerRef.current.direction = "up";
@@ -160,7 +272,8 @@ export default function GameCanvas() {
     companionRef.current.x = playerRef.current.x - TILE_SIZE;
     companionRef.current.y = playerRef.current.y;
     casinoIntroRef.current = { active: true, line: 0, dismissed: false };
-  }, []);
+    playBgMusic(CASINO_MUSIC_SRC);
+  }, [playBgMusic]);
 
   const switchToOverworld = useCallback(() => {
     // Restore overworld position
@@ -170,7 +283,8 @@ export default function GameCanvas() {
     sceneRef.current = "overworld";
     companionRef.current.x = playerRef.current.x - TILE_SIZE;
     companionRef.current.y = playerRef.current.y;
-  }, []);
+    playBgMusic(VILLAGE_MUSIC_SRC);
+  }, [playBgMusic]);
 
   const tryInteract = useCallback(() => {
     // Handle intro first
@@ -265,6 +379,7 @@ export default function GameCanvas() {
         // Bouncer Kaz can't be talked to directly — only triggers from stairs
         if (npc.name === "Bouncer Kaz") continue;
         dialogueRef.current = { active: true, npc, line: 0 };
+        playNpcSound();
         return;
       }
     }
@@ -288,27 +403,12 @@ export default function GameCanvas() {
         return;
       }
 
-      // Casino stairs — bouncer blocks you
+      // Casino stairs — show VIP image
       if (tile === TileType.CASINO_STAIRS && sceneRef.current === "casino") {
-        if (playerMoney >= 5000) {
-          tileDialogueRef.current = { active: true, lines: [
-            "You have enough points! Welcome upstairs, high roller.",
-            "The upper floor awaits... (Coming Soon)",
-          ], line: 0 };
-        } else {
-          dialogueRef.current = { active: true, npc: {
-            x: playerRef.current.x,
-            y: playerRef.current.y - 40,
-            name: "Bouncer Kaz",
-            dialogue: [
-              "Hold it right there.",
-              "The upper floor is for high rollers only.",
-              `You need 5000 points. You have ${playerMoney}.`,
-              "Go win some games and come back when you're worthy.",
-            ],
-            color: "#2c3e50",
-            hairColor: "#1a1a1a",
-          }, line: 0 };
+        if (!vipImageVisible) {
+          setVipImageVisible(true);
+          if (vipTimerRef.current) window.clearTimeout(vipTimerRef.current);
+          vipTimerRef.current = window.setTimeout(() => setVipImageVisible(false), 4000);
         }
         return;
       }
@@ -317,13 +417,14 @@ export default function GameCanvas() {
         tileDialogueRef.current = { active: true, lines: interactions[tile], line: 0 };
       }
     }
-  }, [getActiveNpcs, getActiveMap, getActiveInteractions, switchToCasino, switchToOverworld]);
+  }, [getActiveNpcs, getActiveMap, getActiveInteractions, switchToCasino, switchToOverworld, playNpcSound]);
 
   useEffect(() => {
     loadAllSprites();
     loadTiledMap();
     loadTiledCasino();
     loadCompanionSprite();
+    playBgMusic(VILLAGE_MUSIC_SRC);
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -336,10 +437,25 @@ export default function GameCanvas() {
       if (e.key === "b" || e.key === "B") {
         // Don't toggle if AI chat input is focused (let user type 'b')
         if (document.activeElement?.tagName === "INPUT") return;
+        agentMenuRef.current = agentMenuRef.current.active
+          ? { active: false, tab: "agents", selectedAgent: 0, scrollOffset: 0 }
+          : { active: true, tab: "agents", selectedAgent: 0, scrollOffset: 0 };
+        return;
+      }
+      if (e.key === "t" || e.key === "T") {
+        if (document.activeElement?.tagName === "INPUT") return;
+        e.preventDefault();
+        if (!clankerPurchased) return;
         setAiChatOpen(prev => !prev);
         return;
       }
       if (e.key === "Escape") {
+        // Dismiss VIP image
+        if (vipImageVisible) {
+          setVipImageVisible(false);
+          if (vipTimerRef.current) window.clearTimeout(vipTimerRef.current);
+          return;
+        }
         // Skip all text / close overlays
         if (introRef.current.active) {
           introRef.current = { active: false, line: 0, dismissed: true };
@@ -374,6 +490,12 @@ export default function GameCanvas() {
           setActiveGameScreen(null);
           return;
         }
+        // Close agent menu or chat
+        if (agentMenuRef.current.active) {
+          agentMenuRef.current = { active: false, tab: "agents", selectedAgent: 0, scrollOffset: 0 };
+          return;
+        }
+        setAiChatOpen(false);
       }
       if (e.key === "e" || e.key === "E" || e.key === "Enter" || e.key === " ") {
         tryInteract();
@@ -431,12 +553,37 @@ export default function GameCanvas() {
 
       if (agentMenuRef.current.tab === "agents") {
         const agents = MOCK_AGENTS;
+        const contentX = panelX + 16;
+        const contentW = panelW - 32;
+        const avatarSize = 60;
         let cumulY = 0;
         for (let i = 0; i < agents.length; i++) {
           const agent = agents[i];
           const rowH = Math.max(80, 44 + agent.abilities.length * 16 + 24);
           const rowY = contentY + cumulY;
           if (rowY + rowH > panelY + panelH - 20) break;
+
+          // Check buy button click for Clanker (agent 0) when not purchased
+          if (i === 0 && !clankerPurchased && totalWins >= 2) {
+            const btnW = 70;
+            const btnH = 28;
+            const btnX = contentX + contentW - btnW - 4;
+            const btnY = rowY + 4;
+            if (mx >= btnX && mx <= btnX + btnW && my >= btnY && my <= btnY + btnH) {
+              if (playerMoney >= CLANKER_COST) {
+                playerMoney -= CLANKER_COST;
+                clankerPurchased = true;
+                MOCK_AGENTS[0].status = "active";
+                saveProgress();
+                tileDialogueRef.current = { active: true, lines: [
+                  "Clanker activated! *beep boop*",
+                  "AI Oracle is now available in coin toss games.",
+                  "Press T to chat with Clanker anytime!",
+                ], line: 0 };
+              }
+              return;
+            }
+          }
 
           if (my >= rowY && my <= rowY + rowH) {
             agentMenuRef.current.selectedAgent = i;
@@ -475,6 +622,15 @@ export default function GameCanvas() {
       }
       updateCompanion(companionRef.current, playerRef.current, dt);
 
+      // Auto-enter casino when player walks in front of the door
+      if (sceneRef.current === "overworld" && !blocked) {
+        const ptx = Math.floor((playerRef.current.x + TILE_SIZE / 2) / TILE_SIZE);
+        const pty = Math.floor((playerRef.current.y + TILE_SIZE / 2) / TILE_SIZE);
+        if (ptx === CASINO_BUILDING.doorX && pty === CASINO_BUILDING.doorY ) {
+          switchToCasino();
+        }
+      }
+
       // Auto-exit casino when walking into exit zone
       if (sceneRef.current === "casino" && casinoTiledReady() && !blocked) {
         const ptx = Math.floor((playerRef.current.x + TILE_SIZE / 2) / TILE_SIZE);
@@ -482,23 +638,12 @@ export default function GameCanvas() {
         if (isInCasinoExit(ptx, pty)) {
           switchToOverworld();
         }
-        // Bouncer blocks VIP zone at the top
-        if (isInVipZone(ptx, pty) && !dialogueRef.current.active) {
-          // Push player back down
+        // VIP zone — show image and push back
+        if (isInVipZone(ptx, pty) && !vipImageVisible) {
           playerRef.current.y = 3 * TILE_SIZE;
-          dialogueRef.current = { active: true, npc: {
-            x: playerRef.current.x,
-            y: playerRef.current.y - 40,
-            name: "Bouncer Kaz",
-            dialogue: [
-              "Hold it right there.",
-              "The upper floor is for high rollers only.",
-              `You need 5000 points. You have ${playerMoney}.`,
-              "Go win some games and come back when you're worthy.",
-            ],
-            color: "#2c3e50",
-            hairColor: "#1a1a1a",
-          }, line: 0 };
+          setVipImageVisible(true);
+          if (vipTimerRef.current) window.clearTimeout(vipTimerRef.current);
+          vipTimerRef.current = window.setTimeout(() => setVipImageVisible(false), 4000);
         }
       }
 
@@ -542,13 +687,18 @@ export default function GameCanvas() {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("click", handleClick);
+      if (bgMusicRef.current) {
+        bgMusicRef.current.pause();
+        bgMusicRef.current = null;
+      }
     };
-  }, [tryInteract, getActiveMap, getActiveNpcs]);
+  }, [tryInteract, getActiveMap, getActiveNpcs, playBgMusic]);
 
   const closeGameScreen = useCallback(() => {
     gameScreenRef.current = { active: false, type: null };
     setActiveGameScreen(null);
     setClankerBet(null);
+    hasPlayedFirstGameRef.current = true;
   }, []);
 
   // Detect bet commands from user message
@@ -609,7 +759,7 @@ Keep responses under 60 words.`;
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "gemma3:4b",
+          model: "gpt-4o-mini",
           messages: [
             { role: "system", content: systemPrompt },
             ...aiChatMessages.slice(-6).map(m => ({ role: m.role, content: m.text })),
@@ -646,7 +796,24 @@ Keep responses under 60 words.`;
         }}
       />
       {activeGameScreen === "coin_toss" && (
-        <CoinTossGame onClose={closeGameScreen} initialChoice={clankerBet?.choice ?? null} autoFlip={clankerBet?.autoFlip ?? false} />
+        <CoinTossGame onClose={closeGameScreen} onResult={(won) => {
+          if (won) {
+            playerMoney += 5;
+            totalWins += 1;
+            saveProgress();
+            if (totalWins === 2 && !clankerPurchased) {
+              // Auto-open agent menu after closing game screen
+              setTimeout(() => {
+                agentMenuRef.current = { active: true, tab: "agents", selectedAgent: 0, scrollOffset: 0 };
+                tileDialogueRef.current = { active: true, lines: [
+                  "You've proven yourself at the tables!",
+                  "Clanker is available for purchase in the Workshop.",
+                  "Buy Clanker to unlock the AI Oracle and auto-play!",
+                ], line: 0 };
+              }, 500);
+            }
+          }
+        }} oracleUnlocked={clankerPurchased} initialChoice={clankerBet?.choice ?? null} autoFlip={clankerBet?.autoFlip ?? false} />
       )}
       {activeGameScreen === "price_prediction" && (
         <PricePredictionGame onClose={closeGameScreen} />
@@ -654,73 +821,96 @@ Keep responses under 60 words.`;
       {aiChatOpen && (
         <div style={{
           position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 280,
-          background: "linear-gradient(180deg, #1a0a0a 0%, #0e0808 100%)",
-          borderTop: "2px solid #ff4444",
+          top: 60,
+          right: 20,
+          width: 360,
+          height: 440,
+          background: "#c8bfa0",
+          border: "3px solid #5a5040",
+          borderRadius: 12,
           display: "flex",
           flexDirection: "column",
           fontFamily: "'Courier New', monospace",
           zIndex: 1000,
-          boxShadow: "0 -4px 20px rgba(136,204,255,0.2)",
+          boxShadow: "4px 4px 0px rgba(0,0,0,0.35)",
         }}>
           {/* Header */}
           <div style={{
-            padding: "8px 20px",
-            borderBottom: "1px solid rgba(136,204,255,0.3)",
+            padding: "8px 12px",
+            borderBottom: "2px solid #a89878",
             display: "flex",
             alignItems: "center",
-            gap: 8,
+            justifyContent: "space-between",
           }}>
-            <span style={{ fontSize: 22 }}>⚙️</span>
-            <span style={{ color: "#ff4444", fontWeight: "bold", fontSize: 18 }}>T-800</span>
-            <span style={{ color: "#4a6a8a", fontSize: 12 }}>CLANKER AI</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+             
+              <span style={{ color: "#3a3020", fontWeight: "bold", fontSize: 14 }}>Clanker Chat</span>
+              <span style={{ color: "#7a6e58", fontSize: 10 }}>T-800 AI</span>
+            </div>
+            <button
+              onClick={() => setAiChatOpen(false)}
+              style={{
+                background: "#4a7af5",
+                border: "2px solid #3560c0",
+                borderRadius: 5,
+                width: 26,
+                height: 26,
+                color: "#fff",
+                fontWeight: "bold",
+                fontSize: 14,
+                cursor: "pointer",
+                fontFamily: "'Courier New', monospace",
+                padding: 0,
+                lineHeight: "22px",
+              }}
+            >X</button>
           </div>
           {/* Messages */}
           <div style={{
             flex: 1,
             overflowY: "auto",
-            padding: "8px 20px",
+            padding: "8px 12px",
             display: "flex",
             flexDirection: "column",
             gap: 6,
+            background: "#ede6d0",
+            margin: "8px 10px 0",
+            borderRadius: 6,
+            border: "2px solid #a89878",
           }}>
             {aiChatMessages.length === 0 && (
-              <div style={{ color: "#4a6a8a", fontSize: 16, textAlign: "center", marginTop: 20, fontWeight: "bold" }}>
-                *scanning* I&apos;m T-800. Clanker unit online.<br />Ask me anything, human.
+              <div style={{ color: "#7a6e58", fontSize: 12, textAlign: "center", marginTop: 20, fontWeight: "bold" }}>
+                *scanning* Clanker unit online.<br />Ask me anything, human.
               </div>
             )}
             {aiChatMessages.map((m, i) => (
               <div key={i} style={{
                 alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                background: m.role === "user" ? "#2a4a6a" : "#1a2a3e",
-                border: `1px solid ${m.role === "user" ? "#3a6a9a" : "#88ccff44"}`,
-                borderRadius: 8,
-                padding: "8px 14px",
+                background: m.role === "user" ? "#c8bfa0" : "#ddd4b8",
+                border: `2px solid ${m.role === "user" ? "#a89878" : "#8a7a50"}`,
+                borderRadius: 6,
+                padding: "6px 10px",
                 maxWidth: "85%",
-                fontSize: 16,
+                fontSize: 12,
                 fontWeight: "bold",
-                color: m.role === "user" ? "#cde" : "#ff6666",
-                lineHeight: 1.5,
+                color: m.role === "user" ? "#3a3020" : "#4a4030",
+                lineHeight: 1.4,
               }}>
                 {m.role === "assistant" && <span style={{ marginRight: 4 }}>⚙️</span>}
                 {m.text}
               </div>
             ))}
             {aiChatLoading && (
-              <div style={{ color: "#ff4444", fontSize: 16, fontWeight: "bold", fontStyle: "italic" }}>
+              <div style={{ color: "#8a7a50", fontSize: 12, fontWeight: "bold", fontStyle: "italic" }}>
                 ....clanking
               </div>
             )}
           </div>
           {/* Input */}
           <div style={{
-            padding: "8px 20px 12px",
-            borderTop: "1px solid rgba(136,204,255,0.3)",
+            padding: "8px 10px 10px",
             display: "flex",
-            gap: 8,
+            gap: 6,
           }}>
             <input
               ref={aiChatInputRef}
@@ -734,16 +924,17 @@ Keep responses under 60 words.`;
                   (e.target as HTMLInputElement).blur();
                 }
               }}
-              placeholder="Ask Wall-E..."
+              placeholder="Ask Clanker..."
               autoFocus
               style={{
                 flex: 1,
-                background: "#0a1020",
-                border: "1px solid #3a5a7a",
-                borderRadius: 6,
-                padding: "6px 10px",
-                color: "#cde",
+                background: "#e8e0c8",
+                border: "2px solid #9a9080",
+                borderRadius: 4,
+                padding: "6px 8px",
+                color: "#3a3020",
                 fontSize: 12,
+                fontWeight: "bold",
                 fontFamily: "'Courier New', monospace",
                 outline: "none",
               }}
@@ -752,31 +943,73 @@ Keep responses under 60 words.`;
               onClick={sendAiChat}
               disabled={aiChatLoading}
               style={{
-                background: aiChatLoading ? "#2a3a4a" : "#d4a030",
-                border: "none",
+                background: aiChatLoading ? "#a89878" : "#4a7af5",
+                border: "2px solid",
+                borderColor: aiChatLoading ? "#8a7a50" : "#3560c0",
                 borderRadius: 6,
                 padding: "6px 12px",
-                color: "#1a1a2e",
+                color: "#fff",
                 fontWeight: "bold",
                 fontSize: 12,
                 cursor: aiChatLoading ? "default" : "pointer",
                 fontFamily: "'Courier New', monospace",
               }}
             >Send</button>
-            <button
-              onClick={() => setAiChatOpen(false)}
+          </div>
+          {/* Hint */}
+          <div style={{
+            textAlign: "center",
+            fontSize: 10,
+            color: "#6a6050",
+            paddingBottom: 6,
+          }}>Esc: Close &nbsp; Enter: Send</div>
+        </div>
+      )}
+      {vipImageVisible && (
+        <div
+          onClick={() => { setVipImageVisible(false); if (vipTimerRef.current) window.clearTimeout(vipTimerRef.current); }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 2000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.7)",
+            cursor: "pointer",
+            animation: "fadeIn 0.3s ease-out",
+          }}
+        >
+          <div style={{ position: "relative", textAlign: "center" }}>
+            <img
+              src="/vip.png"
+              alt="VIP Area"
               style={{
-                background: "#88ccff22",
-                border: "1px solid #88ccff",
-                color: "#88ccff",
-                borderRadius: 6,
-                padding: "6px 14px",
-                cursor: "pointer",
-                fontSize: 12,
-                fontWeight: "bold",
-                fontFamily: "'Courier New', monospace",
+                maxWidth: "80vw",
+                maxHeight: "70vh",
+                borderRadius: 16,
+                border: "3px solid #c8a84e",
+                boxShadow: "0 0 40px rgba(253,216,53,0.3)",
               }}
-            >CLOSE</button>
+            />
+            <p style={{
+              color: "#fdd835",
+              fontFamily: "'Courier New', monospace",
+              fontSize: 14,
+              fontWeight: "bold",
+              marginTop: 12,
+              letterSpacing: "0.1em",
+            }}>
+              VIP FLOOR &middot; COMING SOON
+            </p>
+            <p style={{
+              color: "rgba(255,255,255,0.4)",
+              fontFamily: "'Courier New', monospace",
+              fontSize: 11,
+              marginTop: 4,
+            }}>
+              Click or press Esc to dismiss
+            </p>
           </div>
         </div>
       )}

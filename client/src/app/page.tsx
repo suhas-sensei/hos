@@ -79,7 +79,7 @@ export default function Home() {
             letterSpacing: "0.15em",
           }}
         >
-          PIXEL QUEST
+         HOUSE OF STARK
         </h1>
         <p
           className="text-lg md:text-xl tracking-widest uppercase"
@@ -148,7 +148,7 @@ export default function Home() {
       {/* Controls hint */}
       <div className="relative z-10 mt-8 text-center">
         <p className="text-sm opacity-50" style={{ color: "#8ecae6", fontFamily: "'Courier New', monospace" }}>
-          WASD or Arrow Keys to move &middot; E to interact
+       Step into a pixel casino town. Play games, earn coins, and hire AI agents to gamble and grow your fortune.
         </p>
       </div>
 

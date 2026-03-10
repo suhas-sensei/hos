@@ -186,7 +186,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
         return (
           <div
             key={cardId}
-            className="absolute inset-4 sm:inset-6 bg-yellow-400 rounded-2xl sm:rounded-3xl p-4 sm:p-6 flex flex-col border border-yellow-500 select-none"
+            className="absolute inset-2 bg-yellow-400 rounded-2xl p-3 flex flex-col border border-yellow-500 select-none"
             style={{
               transform: isTopCard
                 ? `translateX(${dragOffset}px) rotate(${rotation}deg)`
@@ -218,22 +218,17 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
             )}
 
             {/* Header Spacer */}
-            <div
-              className="mb-4 sm:mb-6"
-              style={{
-                height: 'calc(3rem + env(safe-area-inset-top, 0px))',
-              }}
-            />
+            <div className="mb-2" style={{ height: 28 }} />
 
             {/* Price Display */}
-            <div className="mb-4 sm:mb-6">
-              <div className="flex items-center gap-2 mb-1 sm:mb-2">
-                <p className="text-black opacity-90 text-3xl sm:text-4xl md:text-5xl">{marketName}/USD</p>
-                <div className="flex items-center bg-black bg-opacity-10 rounded-full p-0.5 text-xs select-none">
+            <div className="mb-2">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <p className="text-black opacity-90 text-lg">{marketName}/USD</p>
+                <div className="flex items-center bg-black bg-opacity-10 rounded-full p-0.5 text-[10px] select-none">
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setPreferredSource('pyth') }}
-                    className={`px-2 py-0.5 rounded-full transition-colors ${
+                    className={`px-1.5 py-0.5 rounded-full transition-colors ${
                       source === 'pyth'
                         ? 'bg-yellow-300 text-black font-semibold'
                         : 'text-black opacity-50'
@@ -243,11 +238,11 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
                   </button>
                 </div>
               </div>
-              <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-black">
+              <h2 className="text-xl font-bold text-black">
                 {isPriceLoading ? (
                   <span className="opacity-50">Loading...</span>
                 ) : priceError ? (
-                  <span className="opacity-50 text-lg">Error loading price</span>
+                  <span className="opacity-50 text-sm">Error loading price</span>
                 ) : price !== null ? (
                   `$${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 ) : (
@@ -257,7 +252,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
             </div>
 
             {/* Chart Area */}
-            <div className="flex-1 mb-4 sm:mb-6 relative">
+            <div className="flex-1 mb-2 relative min-h-[120px]">
               {isSupported ? (
                 <EthPriceChart currentPrice={price} lockPrice={lockPrice} />
               ) : (
@@ -296,7 +291,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
 
             {/* Profit/Loss Info */}
             <div
-              className="bg-yellow-500 rounded-xl sm:rounded-2xl p-4 sm:p-5 mb-4 sm:mb-6 relative overflow-hidden"
+              className="bg-yellow-500 rounded-xl p-3 mb-2 relative overflow-hidden"
             >
               {/* Timer Overlay */}
               <div
@@ -308,26 +303,26 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
               />
 
               <div className="relative z-10">
-                <div className="mb-4 sm:mb-5">
-                  <p className="text-black text-xs sm:text-sm opacity-75 mb-1">CURRENT ROUND #{currentEpoch}</p>
-                  <p className="text-black font-bold text-2xl sm:text-3xl">
+                <div className="mb-2">
+                  <p className="text-black text-[10px] opacity-75 mb-0.5">ROUND #{currentEpoch}</p>
+                  <p className="text-black font-bold text-base">
                     {isRoundActive ? 'SWIPE TO BET' : isLockPhase ? 'ROUND LOCKED' : 'ROUND ENDED'}
                   </p>
-                  <p className="text-black text-xs sm:text-sm opacity-60">
+                  <p className="text-black text-[10px] opacity-60">
                     {isRoundActive ? 'Swipe right = UP, left = DOWN' : isLockPhase ? 'Waiting for result...' : 'Next round starting...'}
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 sm:gap-6">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="text-black text-xs sm:text-sm opacity-75 mb-1">Down (Bear)</p>
-                    <p className="font-bold text-3xl sm:text-4xl" style={{ color: '#ed4b9e' }}>
+                    <p className="text-black text-[10px] opacity-75 mb-0.5">Down (Bear)</p>
+                    <p className="font-bold text-xl" style={{ color: '#ed4b9e' }}>
                       1.95x
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-black text-xs sm:text-sm opacity-75 mb-1">Up (Bull)</p>
-                    <p className="font-bold text-3xl sm:text-4xl" style={{ color: '#2e8656' }}>
+                    <p className="text-black text-[10px] opacity-75 mb-0.5">Up (Bull)</p>
+                    <p className="font-bold text-xl" style={{ color: '#2e8656' }}>
                       1.95x
                     </p>
                   </div>
@@ -336,11 +331,7 @@ export default function MarketCard({ marketName, onSwipeComplete, hasSwipedThisR
             </div>
 
             {/* Bottom Spacer */}
-            <div
-              style={{
-                height: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))',
-              }}
-            />
+            <div style={{ height: 16 }} />
           </div>
         )
       })}

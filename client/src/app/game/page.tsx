@@ -81,7 +81,7 @@ export default function GamePage() {
       return;
     }
 
-    // Use redirect flow on HTTP (localhost) — Cartridge iframe requires HTTPS for storage access
+    // Cartridge iframe requires HTTPS — use redirect flow on localhost
     const isHttp = typeof window !== "undefined" && window.location.protocol === "http:";
     if (isHttp) {
       controllerConnector.controller.open({ redirectUrl: window.location.href });

@@ -14,6 +14,8 @@ import { RPC_URL } from "../../dojo/config";
 
 interface CoinTossGameProps {
   onClose: () => void;
+  onResult?: (won: boolean) => void;
+  oracleUnlocked?: boolean;
   initialChoice?: number | null;
   autoFlip?: boolean;
 }
@@ -55,10 +57,6 @@ const KEYFRAMES = `
   60%  { transform: rotateY(360deg) scale(1.05); }
   100% { transform: rotateY(0deg) scale(1); }
 }
-@keyframes glowPulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(253,216,53,0.3), 0 0 40px rgba(253,216,53,0.1); }
-  50%      { box-shadow: 0 0 30px rgba(253,216,53,0.5), 0 0 60px rgba(253,216,53,0.2); }
-}
 @keyframes resultSlide {
   0%   { opacity: 0; transform: scale(0.5) translateY(20px); }
   60%  { opacity: 1; transform: scale(1.1) translateY(-4px); }
@@ -90,7 +88,7 @@ const KEYFRAMES = `
 
 const rpcProvider = new RpcProvider({ nodeUrl: RPC_URL });
 
-export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinTossGameProps) {
+export default function CoinTossGame({ onClose, onResult, oracleUnlocked = false, initialChoice, autoFlip }: CoinTossGameProps) {
   const { account, address } = useAccount();
 
   const [choice, setChoice] = useState<number | null>(initialChoice ?? null);
@@ -127,7 +125,7 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "gemma3:4b",
+          model: "gpt-4o-mini",
           messages: [
             {
               role: "system",
@@ -187,6 +185,7 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
       // Step 6: Read result
       const result = await readGameResult(rpcProvider, tokenId);
       setAiHistory(prev => [...prev, { choice: choice === 0 ? "HEADS" : "TAILS", won: result.won }]);
+      onResult?.(result.won);
       setStep({ id: "done", result });
     } catch (err: any) {
       const msg = err?.message ?? "Transaction failed";
@@ -223,8 +222,7 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "rgba(0,0,0,0.85)",
-        backdropFilter: "blur(4px)",
+        background: "rgba(0,0,0,0.6)",
         outline: "none",
         animation: "fadeIn 0.3s ease-out",
       }}
@@ -233,40 +231,19 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
 
       <div
         style={{
-          background: "linear-gradient(170deg, #0d1117 0%, #0a0f14 40%, #0d1a0f 100%)",
-          border: "2px solid #c8a84e",
-          borderRadius: 16,
+          background: "#c8bfa0",
+          border: "3px solid #5a5040",
+          borderRadius: 12,
           padding: "28px 36px 24px",
           maxWidth: 520,
           width: "92%",
           fontFamily: "'Courier New', monospace",
-          color: "#e0e0e0",
+          color: "#3a3020",
           position: "relative",
-          animation: "glowPulse 3s ease-in-out infinite",
           overflow: "hidden",
+          boxShadow: "4px 4px 0px rgba(0,0,0,0.35)",
         }}
       >
-        {/* Felt texture overlay */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "radial-gradient(ellipse at 50% 30%, rgba(34,85,34,0.15) 0%, transparent 70%)",
-            pointerEvents: "none",
-          }}
-        />
-
-        {/* Decorative top border accent */}
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 3,
-            background: "linear-gradient(90deg, transparent, #fdd835, #c8a84e, #fdd835, transparent)",
-          }}
-        />
 
         {/* Close button */}
         <button
@@ -275,38 +252,32 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
             position: "absolute",
             top: 10,
             right: 14,
-            background: "none",
-            border: "1px solid #333",
-            borderRadius: 6,
-            color: "#888",
+            background: "#4a7af5",
+            border: "2px solid #3560c0",
+            borderRadius: 5,
+            width: 26,
+            height: 26,
+            color: "#fff",
+            fontWeight: "bold",
             fontSize: 14,
             cursor: "pointer",
             fontFamily: "inherit",
-            padding: "2px 8px",
-            transition: "all 0.2s",
+            padding: 0,
+            lineHeight: "22px",
             zIndex: 2,
           }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#c8a84e";
-            e.currentTarget.style.color = "#fdd835";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#333";
-            e.currentTarget.style.color = "#888";
-          }}
         >
-          ESC
+          X
         </button>
 
         {/* Title */}
         <div style={{ textAlign: "center", position: "relative", zIndex: 1 }}>
           <h2
             style={{
-              color: "#fdd835",
-              fontSize: 26,
+              color: "#3a3020",
+              fontSize: 22,
               margin: "0 0 2px",
               letterSpacing: "0.15em",
-              textShadow: "0 0 20px rgba(253,216,53,0.4)",
               fontWeight: "bold",
             }}
           >
@@ -314,13 +285,13 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
           </h2>
           <p
             style={{
-              color: "#6b6b4e",
+              color: "#7a6e58",
               fontSize: 12,
-              margin: "0 0 24px",
+              margin: "0 0 20px",
               letterSpacing: "0.08em",
             }}
           >
-            0.001 ETH &middot; DOUBLE OR NOTHING
+            0.001 STRK &middot; DOUBLE OR NOTHING
           </p>
         </div>
 
@@ -330,22 +301,24 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
               style={{
                 textAlign: "center",
                 fontSize: 11,
-                color: "#4a5568",
+                color: "#7a6e58",
                 marginBottom: 20,
               }}
             >
               <span
                 style={{
-                  background: "rgba(200,168,78,0.1)",
-                  border: "1px solid #2a2a1e",
+                  background: "#ede6d0",
+                  border: "2px solid #a89878",
                   borderRadius: 4,
                   padding: "3px 10px",
                   display: "inline-block",
+                  color: "#3a3020",
+                  fontWeight: "bold",
                 }}
               >
                 {shortAddr}
               </span>
-              <span style={{ color: "#4caf50", fontSize: 9, marginLeft: 8 }}>CONTROLLER</span>
+              <span style={{ color: "#8a7a50", fontSize: 9, marginLeft: 8 }}>CONTROLLER</span>
             </div>
 
             {/* ── IDLE: Choose side + flip ─────────────── */}
@@ -381,7 +354,7 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
                 </div>
 
                 {/* AI Advisor */}
-                <div style={{ marginBottom: 16 }}>
+                {oracleUnlocked && <div style={{ marginBottom: 16 }}>
                   {!aiAdvice && !aiLoading && (
                     <button
                       onClick={askAI}
@@ -393,20 +366,20 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
                         fontWeight: "bold",
                         fontFamily: "'Courier New', monospace",
                         letterSpacing: "0.1em",
-                        border: "1px solid #7c4dff",
-                        borderRadius: 8,
-                        background: "rgba(124,77,255,0.08)",
-                        color: "#b388ff",
+                        border: "2px solid #8a7a50",
+                        borderRadius: 6,
+                        background: "#ddd4b8",
+                        color: "#3a3020",
                         cursor: "pointer",
                         transition: "all 0.2s",
                       }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "rgba(124,77,255,0.18)";
-                        e.currentTarget.style.borderColor = "#b388ff";
+                        e.currentTarget.style.background = "#ede6d0";
+                        e.currentTarget.style.borderColor = "#5a5040";
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "rgba(124,77,255,0.08)";
-                        e.currentTarget.style.borderColor = "#7c4dff";
+                        e.currentTarget.style.background = "#ddd4b8";
+                        e.currentTarget.style.borderColor = "#8a7a50";
                       }}
                     >
                       ASK AI ORACLE
@@ -417,8 +390,8 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
                       textAlign: "center",
                       padding: "10px 0",
                       fontSize: 12,
-                      color: "#b388ff",
-                      animation: "glowPulse 1.5s ease-in-out infinite",
+                      color: "#5a5040",
+                      fontWeight: "bold",
                     }}>
                       <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>&#9734;</span>
                       {" "}Consulting the oracle...
@@ -426,44 +399,33 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
                   )}
                   {aiAdvice && (
                     <div style={{
-                      background: "rgba(124,77,255,0.06)",
-                      border: "1px solid rgba(124,77,255,0.3)",
-                      borderRadius: 8,
+                      background: "#ede6d0",
+                      border: "2px solid #a89878",
+                      borderRadius: 6,
                       padding: "10px 14px",
                     }}>
-                      <div style={{ fontSize: 9, color: "#7c4dff", letterSpacing: "0.15em", marginBottom: 4, fontWeight: "bold" }}>
+                      <div style={{ fontSize: 9, color: "#8a7a50", letterSpacing: "0.15em", marginBottom: 4, fontWeight: "bold" }}>
                         AI ORACLE
                       </div>
-                      <p style={{ color: "#d1c4e9", fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+                      <p style={{ color: "#4a4030", fontSize: 12, margin: 0, lineHeight: 1.5, fontWeight: "bold" }}>
                         {aiAdvice}
                       </p>
                     </div>
                   )}
-                </div>
+                </div>}
 
                 {/* Flip button */}
                 <button
                   onClick={handleFlip}
                   disabled={choice === null}
-                  style={{
-                    ...primaryBtnStyle(choice !== null),
-                    ...(choice !== null
-                      ? {
-                          background: "linear-gradient(135deg, rgba(253,216,53,0.15) 0%, rgba(200,168,78,0.1) 100%)",
-                          backgroundSize: "200% auto",
-                          animation: "shimmer 3s linear infinite",
-                        }
-                      : {}),
-                  }}
+                  style={primaryBtnStyle(choice !== null)}
                   onMouseEnter={(e) => {
                     if (choice !== null) {
-                      e.currentTarget.style.transform = "translateY(-2px)";
-                      e.currentTarget.style.boxShadow = "0 4px 20px rgba(253,216,53,0.3)";
+                      e.currentTarget.style.background = "#3560c0";
                     }
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "none";
+                    e.currentTarget.style.background = choice !== null ? "#4a7af5" : "#b8b0a0";
                   }}
                 >
                   {choice !== null ? "FLIP COIN" : "SELECT A SIDE"}
@@ -478,10 +440,11 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
 
                 <p
                   style={{
-                    color: "#fdd835",
+                    color: "#3a3020",
                     marginTop: 16,
                     fontSize: 14,
                     letterSpacing: "0.05em",
+                    fontWeight: "bold",
                   }}
                 >
                   {STEP_LABELS[step.id as keyof typeof STEP_LABELS]}
@@ -491,7 +454,7 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
 
                 <p
                   style={{
-                    color: "#3a3a3a",
+                    color: "#7a6e58",
                     fontSize: 11,
                     marginTop: 10,
                   }}
@@ -530,18 +493,18 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
                   {step.result.won ? "YOU WON!" : "YOU LOST"}
                 </p>
 
-                <p style={{ color: "#6b6b6b", fontSize: 13, marginBottom: 4 }}>
+                <p style={{ color: "#5a5040", fontSize: 13, marginBottom: 4 }}>
                   You called:{" "}
-                  <strong style={{ color: "#c8a84e" }}>
+                  <strong style={{ color: "#3a3020" }}>
                     {choice === 0 ? "Heads" : "Tails"}
                   </strong>
                 </p>
                 <p
                   style={{
-                    color: step.result.won ? "#4caf50" : "#6b4545",
+                    color: step.result.won ? "#4caf50" : "#994444",
                     fontSize: 13,
                     marginBottom: 24,
-                    fontWeight: step.result.won ? "bold" : "normal",
+                    fontWeight: "bold",
                   }}
                 >
                   {step.result.won
@@ -554,12 +517,10 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
                     onClick={reset}
                     style={primaryBtnStyle(true)}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.background = "rgba(253,216,53,0.2)";
-                      e.currentTarget.style.transform = "translateY(-1px)";
+                      e.currentTarget.style.background = "#3560c0";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "rgba(253,216,53,0.08)";
-                      e.currentTarget.style.transform = "translateY(0)";
+                      e.currentTarget.style.background = "#4a7af5";
                     }}
                   >
                     PLAY AGAIN
@@ -568,12 +529,10 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
                     onClick={onClose}
                     style={secondaryBtnStyle()}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "#555";
-                      e.currentTarget.style.color = "#999";
+                      e.currentTarget.style.background = "#ede6d0";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "#2a2a2a";
-                      e.currentTarget.style.color = "#666";
+                      e.currentTarget.style.background = "#ddd4b8";
                     }}
                   >
                     CLOSE
@@ -593,30 +552,25 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
               >
                 <div
                   style={{
-                    background: "rgba(233,69,96,0.08)",
-                    border: "1px solid rgba(233,69,96,0.3)",
-                    borderRadius: 8,
+                    background: "#ede6d0",
+                    border: "2px solid #c05050",
+                    borderRadius: 6,
                     padding: "12px 16px",
                     marginBottom: 16,
                   }}
                 >
-                  <p style={{ color: "#e94560", fontSize: 12, margin: 0, lineHeight: 1.5 }}>
+                  <p style={{ color: "#994444", fontSize: 12, margin: 0, lineHeight: 1.5, fontWeight: "bold" }}>
                     {step.message}
                   </p>
                 </div>
                 <button
                   onClick={reset}
-                  style={{
-                    ...primaryBtnStyle(true),
-                    borderColor: "#e94560",
-                    color: "#e94560",
-                    background: "rgba(233,69,96,0.08)",
-                  }}
+                  style={primaryBtnStyle(true)}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(233,69,96,0.15)";
+                    e.currentTarget.style.background = "#3560c0";
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "rgba(233,69,96,0.08)";
+                    e.currentTarget.style.background = "#4a7af5";
                   }}
                 >
                   TRY AGAIN
@@ -630,13 +584,13 @@ export default function CoinTossGame({ onClose, initialChoice, autoFlip }: CoinT
           style={{
             textAlign: "center",
             fontSize: 10,
-            color: "#2a2a2a",
+            color: "#7a6e58",
             marginTop: 16,
             position: "relative",
             zIndex: 1,
           }}
         >
-          Press ESC to close
+          Esc: Close
         </p>
       </div>
     </div>
@@ -751,13 +705,13 @@ function CoinChoice({
       style={{
         width: 110,
         padding: "14px 0 10px",
-        border: `2px solid ${selected ? "#fdd835" : active ? "#6b6b4e" : "#2a2a2a"}`,
-        borderRadius: 12,
+        border: `2px solid ${selected ? "#5a5040" : active ? "#8a7a50" : "#a89878"}`,
+        borderRadius: 8,
         background: selected
-          ? "rgba(253,216,53,0.1)"
+          ? "#ede6d0"
           : active
-            ? "rgba(253,216,53,0.04)"
-            : "rgba(10,10,20,0.6)",
+            ? "#ddd4b8"
+            : "#c8bfa0",
         cursor: "pointer",
         transition: "all 0.2s ease",
         display: "flex",
@@ -767,7 +721,7 @@ function CoinChoice({
         fontFamily: "'Courier New', monospace",
         transform: active ? "translateY(-2px)" : "translateY(0)",
         boxShadow: selected
-          ? "0 4px 16px rgba(253,216,53,0.2)"
+          ? "2px 2px 0px rgba(0,0,0,0.2)"
           : "none",
       }}
     >
@@ -803,7 +757,7 @@ function CoinChoice({
         style={{
           fontSize: 12,
           fontWeight: "bold",
-          color: selected ? "#fdd835" : active ? "#999" : "#555",
+          color: selected ? "#3a3020" : active ? "#5a5040" : "#7a6e58",
           letterSpacing: "0.12em",
           transition: "color 0.2s",
         }}
@@ -840,15 +794,11 @@ function StepDots({ current }: { current: string }) {
                 background: done
                   ? "#4caf50"
                   : active
-                    ? "#fdd835"
-                    : "#2a2a2a",
-                border: active ? "2px solid rgba(253,216,53,0.4)" : "none",
+                    ? "#5a5040"
+                    : "#a89878",
+                border: active ? "2px solid #3a3020" : "none",
                 transition: "all 0.3s ease",
-                boxShadow: active
-                  ? "0 0 8px rgba(253,216,53,0.5)"
-                  : done
-                    ? "0 0 4px rgba(76,175,80,0.3)"
-                    : "none",
+                boxShadow: "none",
               }}
             />
             {i < STEPS_ORDER.length - 1 && (
@@ -856,7 +806,7 @@ function StepDots({ current }: { current: string }) {
                 style={{
                   width: 16,
                   height: 2,
-                  background: done ? "#4caf50" : "#1a1a1a",
+                  background: done ? "#4caf50" : "#a89878",
                   borderRadius: 1,
                   transition: "background 0.3s",
                 }}
@@ -882,10 +832,10 @@ function primaryBtnStyle(enabled: boolean): React.CSSProperties {
     fontWeight: "bold",
     fontFamily: "'Courier New', monospace",
     letterSpacing: "0.12em",
-    border: `2px solid ${enabled ? "#c8a84e" : "#222"}`,
-    borderRadius: 10,
-    background: enabled ? "rgba(253,216,53,0.08)" : "#0d0d0d",
-    color: enabled ? "#fdd835" : "#444",
+    border: `2px solid ${enabled ? "#5a5040" : "#a89878"}`,
+    borderRadius: 6,
+    background: enabled ? "#4a7af5" : "#b8b0a0",
+    color: enabled ? "#fff" : "#7a6e58",
     cursor: enabled ? "pointer" : "not-allowed",
     transition: "all 0.25s ease",
   };
@@ -900,10 +850,10 @@ function secondaryBtnStyle(): React.CSSProperties {
     fontWeight: "bold",
     fontFamily: "'Courier New', monospace",
     letterSpacing: "0.12em",
-    border: "2px solid #2a2a2a",
-    borderRadius: 10,
-    background: "transparent",
-    color: "#666",
+    border: "2px solid #a89878",
+    borderRadius: 6,
+    background: "#ddd4b8",
+    color: "#5a5040",
     cursor: "pointer",
     transition: "all 0.25s ease",
   };

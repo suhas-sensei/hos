@@ -2,7 +2,7 @@ import { TILE_SIZE, TILE_INFO, TileType, drawTile } from "./tiles";
 import { gameMap, MAP_WIDTH, MAP_HEIGHT, npcs, NPC } from "./map";
 import { Player, drawPlayer, MapData, getFacingTile } from "./player";
 import { Robot, drawRobot } from "./robot";
-import { AgentMenuState, AgentData, MOCK_AGENTS, SHOP_POWERS, playerMoney } from "./GameCanvas";
+import { AgentMenuState, AgentData, MOCK_AGENTS, SHOP_POWERS, playerMoney, totalWins, clankerPurchased, CLANKER_COST } from "./GameCanvas";
 import { drawTiledMap, tiledMapReady, getTiledMinimapColor, TILED_MAP_WIDTH, TILED_MAP_HEIGHT, CASINO_BUILDING } from "./tiledMap";
 import { drawTiledCasino, casinoTiledReady, CASINO_MAP_W, CASINO_MAP_H } from "./tiledCasino";
 import { Companion, drawCompanion } from "./companion";
@@ -734,6 +734,13 @@ function drawUI(
     ctx.textAlign = "left";
     ctx.fillText("WASD: Move  E: Interact  B: AI", 20, 38);
 
+    // Coins display below controls
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(10, 58, 140, 32);
+    ctx.font = "bold 18px 'Courier New', monospace";
+    ctx.fillStyle = "#fdd835";
+    ctx.textAlign = "left";
+    ctx.fillText(`\u{1FA99} ${playerMoney} coins`, 20, 80);
   }
 
   // Proximity prompt for interactable tiles
@@ -1252,6 +1259,8 @@ function drawAgentsContent(
 
   for (let i = 0; i < agents.length; i++) {
     const agent = agents[i];
+    const isClanker = i === 0;
+    const isLocked = agent.status === "idle";
     const rowH = getRowH(agent);
     const rowY = contentY + cumulY;
     if (rowY + rowH > maxY) break;
@@ -1271,8 +1280,35 @@ function drawAgentsContent(
       ctx.stroke();
     }
 
+    // Dim overlay for locked agents (but not Clanker when available to buy)
+    if (isLocked && !(isClanker && totalWins >= 2)) {
+      ctx.globalAlpha = 0.5;
+    }
+
     // Avatar
     drawPixelAvatar(ctx, contentX, rowY, avatarSize, agent);
+
+    ctx.globalAlpha = 1.0;
+
+    // Text below avatar
+    ctx.font = "bold 9px 'Courier New', monospace";
+    ctx.textAlign = "center";
+    if (isClanker && clankerPurchased) {
+      ctx.fillStyle = "#4caf50";
+      ctx.fillText("ONLINE", contentX + avatarSize / 2, rowY + avatarSize + 12);
+    } else if (isClanker && !clankerPurchased && totalWins >= 2) {
+      ctx.fillStyle = "#4a7af5";
+      ctx.fillText("AVAILABLE", contentX + avatarSize / 2, rowY + avatarSize + 12);
+      ctx.fillText(`Cost: ${CLANKER_COST} coins`, contentX + avatarSize / 2, rowY + avatarSize + 23);
+    } else if (isClanker && !clankerPurchased) {
+      ctx.fillStyle = "#7a6e58";
+      ctx.fillText("Win 2 rounds", contentX + avatarSize / 2, rowY + avatarSize + 12);
+      ctx.fillText("to unlock", contentX + avatarSize / 2, rowY + avatarSize + 23);
+    } else {
+      ctx.fillStyle = "#888";
+      ctx.fillText("LOCKED", contentX + avatarSize / 2, rowY + avatarSize + 12);
+      ctx.fillText("Coming soon", contentX + avatarSize / 2, rowY + avatarSize + 23);
+    }
 
     // Name in input-style box
     const nameBoxX = contentX + avatarSize + 12;
@@ -1280,64 +1316,76 @@ function drawAgentsContent(
     const nameBoxW = contentW - avatarSize - 96;
     const nameBoxH = 28;
 
-    ctx.fillStyle = "#e8e0c8";
+    ctx.fillStyle = isLocked ? "#d0d0d0" : "#e8e0c8";
     ctx.beginPath();
     ctx.roundRect(nameBoxX, nameBoxY, nameBoxW, nameBoxH, 4);
     ctx.fill();
-    ctx.strokeStyle = "#9a9080";
+    ctx.strokeStyle = isLocked ? "#aaa" : "#9a9080";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(nameBoxX, nameBoxY, nameBoxW, nameBoxH, 4);
     ctx.stroke();
 
     ctx.font = "bold 14px 'Courier New', monospace";
-    ctx.fillStyle = "#3a3020";
+    ctx.fillStyle = isLocked ? "#999" : "#3a3020";
     ctx.textAlign = "left";
     ctx.fillText(agent.name, nameBoxX + 8, nameBoxY + 19);
 
-    // Hire button — prominent blue
-    const btnW = 68;
+    // Status button
+    const btnW = 70;
     const btnH = 28;
-    const btnX = contentX + contentW - btnW;
-    const btnY = rowY + 2;
+    const btnX = contentX + contentW - btnW - 4;
+    const btnY = rowY + 4;
+
+    const canBuyClanker = isClanker && !clankerPurchased && totalWins >= 2;
+    const canAffordClanker = canBuyClanker && playerMoney >= CLANKER_COST;
+
     // Button shadow
-    ctx.fillStyle = "#3560c0";
+    ctx.fillStyle = isLocked ? "#555" : "#2a5a10";
     ctx.beginPath();
     ctx.roundRect(btnX + 2, btnY + 2, btnW, btnH, 6);
     ctx.fill();
     // Button face
-    ctx.fillStyle = "#4a7af5";
+    if (canBuyClanker) {
+      ctx.fillStyle = canAffordClanker ? "#4a7af5" : "#888";
+    } else if (!isLocked) {
+      ctx.fillStyle = "#4caf50";
+    } else {
+      ctx.fillStyle = "#888";
+    }
     ctx.beginPath();
     ctx.roundRect(btnX, btnY, btnW, btnH, 6);
     ctx.fill();
-    ctx.strokeStyle = "#3560c0";
+    ctx.strokeStyle = canBuyClanker && canAffordClanker ? "#3560c0" : isLocked ? "#666" : "#388e3c";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(btnX, btnY, btnW, btnH, 6);
     ctx.stroke();
-    // Button highlight
-    ctx.fillStyle = "rgba(255,255,255,0.2)";
-    ctx.beginPath();
-    ctx.roundRect(btnX + 2, btnY + 2, btnW - 4, btnH / 2 - 2, [4, 4, 0, 0]);
-    ctx.fill();
 
-    ctx.font = "bold 13px 'Courier New', monospace";
+    ctx.font = "bold 12px 'Courier New', monospace";
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
-    ctx.fillText("Active", btnX + btnW / 2, btnY + 19);
+    if (canBuyClanker) {
+      ctx.fillText(`Buy (${CLANKER_COST})`, btnX + btnW / 2, btnY + 19);
+    } else if (!isLocked) {
+      ctx.fillText("Active", btnX + btnW / 2, btnY + 19);
+    } else {
+      ctx.fillStyle = "#ccc";
+      ctx.fillText("Locked", btnX + btnW / 2, btnY + 19);
+    }
 
-    // Abilities box — white/cream with clean border
+    // Abilities box
     if (agent.abilities.length > 0) {
       const listX = contentX + avatarSize + 12;
       const listY = rowY + 36;
       const listW = contentW - avatarSize - 16;
       const listH = 20 + agent.abilities.length * 16;
 
-      ctx.fillStyle = "#ede6d0";
+      ctx.fillStyle = isLocked ? "#e0e0e0" : "#ede6d0";
       ctx.beginPath();
       ctx.roundRect(listX, listY, listW, listH, 6);
       ctx.fill();
-      ctx.strokeStyle = "#a89878";
+      ctx.strokeStyle = isLocked ? "#bbb" : "#a89878";
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.roundRect(listX, listY, listW, listH, 6);
@@ -1345,23 +1393,22 @@ function drawAgentsContent(
 
       // "Abilities" header
       ctx.font = "bold 12px 'Courier New', monospace";
-      ctx.fillStyle = "#4a4030";
+      ctx.fillStyle = isLocked ? "#aaa" : "#4a4030";
       ctx.textAlign = "left";
-      ctx.fillText("Abilities", listX + 10, listY + 14);
+      ctx.fillText(isLocked ? "Abilities [REDACTED]" : "Abilities", listX + 10, listY + 14);
 
       // Ability items
       ctx.font = "11px 'Courier New', monospace";
       for (let t = 0; t < agent.abilities.length; t++) {
         const taskY = listY + 28 + t * 16;
-        // Dark square bullet
-        ctx.fillStyle = "#6a6050";
+        ctx.fillStyle = isLocked ? "#bbb" : "#6a6050";
         ctx.fillRect(listX + 12, taskY - 5, 6, 6);
-        // Text
-        ctx.fillStyle = "#5a5040";
+        ctx.fillStyle = isLocked ? "#bbb" : "#5a5040";
         ctx.fillText(agent.abilities[t], listX + 24, taskY);
       }
     }
   }
+
 }
 
 function drawShopContent(
